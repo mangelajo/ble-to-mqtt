@@ -1,0 +1,14 @@
+mqtt_config:
+  endpoint: tcp://my-server.com:1883
+  client_id: my-client-id
+  username: user
+  password: pass
+
+sensors:
+  - name: mobilhome
+    mac: "E0:13:D5:81:60:68"
+    mqtt_publish: doremor/mobilhome/temp_hum
+
+  - name: exterior
+    mac: "E3:32:81:12:E8:59"
+    mqtt_publish: doremor/outside/temp_hum
