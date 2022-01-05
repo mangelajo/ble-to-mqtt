@@ -35,7 +35,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut sensors = HashMap::new();
 
     for sensor in cfg.sensors.iter() {
-        sensors.insert(sensor.mac.clone(), sensor.name.clone());
+        sensors.insert(sensor.mac.to_uppercase(), sensor);
     }
 
     let manager = Manager::new().await?;
@@ -58,15 +58,27 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 id,
                 manufacturer_data,
             } => {
-                println!(
-                    "ManufacturerDataAdvertisement: {:?}, {:?}",
-                    id, manufacturer_data
-                );
+                let peripheralid_mac = format!("{:?}", id).to_uppercase();
+                let mac = &peripheralid_mac[13..=13+16];
+
                 if let Some(data) = manufacturer_data.get(&0x8801_u16) {
                     let temp = LittleEndian::read_i16(&data[4..=5]) as f32 / 100.0;
                     let hum = LittleEndian::read_i16(&data[6..=7]) as f32 / 100.0;
                     let batt = &data[8];
-                    println!("Temp: {}C RH:{}% batt{}%", temp, hum, batt);
+                    println!("{} -> Temp: {}C RH:{}% batt: {}%", mac, temp, hum, batt);
+
+                    let json = format!("{\"temperature\":\"{}\", \"RH\":\"{}\", battery:\"{}\"}",
+                        temp, hum, batt);
+
+                    match sensors.get(&*mac) {
+                        Some(sensor) => println!("Sensor: {:?}", sensor),
+                        None => println!("Received temp for sensor {} not in config", mac),
+                    }
+                } else {
+                    println!(
+                        "ManufacturerDataAdvertisement: {:?}, {:?}",
+                        id, manufacturer_data
+                    );
                 }
             }
 

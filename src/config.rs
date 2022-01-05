@@ -20,7 +20,8 @@ pub struct MQTTConfig {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Sensor {
     pub name: String,
-    pub mac: String
+    pub mac: String,
+    pub mqtt_publish: String,
 }
 
 #[derive(Debug, Error)]
