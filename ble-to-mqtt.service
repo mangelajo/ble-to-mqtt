@@ -1,0 +1,16 @@
+[Unit]
+Description = BLE to MQTT bridge for sensors
+After=network-online.target
+Wants=network-online.target
+
+StartLimitIntervalSec=400
+StartLimitBurst=10000000
+
+[Service]
+Environment=RUST_BACKTRACE=1
+Restart=on-failure
+ExecStart=/usr/bin/ble
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
