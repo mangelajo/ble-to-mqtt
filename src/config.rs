@@ -1,20 +1,21 @@
-use serde_derive::{Serialize, Deserialize};
+use serde_derive::{Deserialize, Serialize};
 use serde_yaml;
-use thiserror::Error;
 use std::io;
+use thiserror::Error;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Config {
     pub mqtt_config: MQTTConfig,
-    pub sensors: Vec<Sensor>
+    pub sensors: Vec<Sensor>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct MQTTConfig {
+    pub disabled: bool,
     pub endpoint: String,
     pub client_id: String,
     pub username: String,
-    pub password: String
+    pub password: String,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -33,7 +34,7 @@ pub enum ParsingError {
     FailedToParse(#[from] serde_yaml::Error),
 }
 
-pub fn read(filename: String) -> Result<Config, ParsingError>{
+pub fn read(filename: String) -> Result<Config, ParsingError> {
     let f = std::fs::File::open(filename)?;
     let cfg = serde_yaml::from_reader(f)?;
     Ok(cfg)

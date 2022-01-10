@@ -71,22 +71,45 @@ async fn main() -> Result<(), Box<dyn Error>> {
             } => {
                 let peripheralid_mac = format!("{:?}", id).to_uppercase();
                 let mac = &peripheralid_mac[13..=13 + 16];
+                let mut temp = 0.0;
+                let mut hum = 0.0;
+                let mut batt: &u8 = &0;
+                let mut have_reading = false;
 
                 if let Some(data) = manufacturer_data.get(&0x8801_u16) {
-                    let temp = LittleEndian::read_i16(&data[4..=5]) as f32 / 100.0;
-                    let hum = LittleEndian::read_i16(&data[6..=7]) as f32 / 100.0;
-                    let batt = &data[8];
-                    info!("{} -> Temp: {}C RH:{}% batt: {}%", mac, temp, hum, batt);
+                    temp = LittleEndian::read_i16(&data[4..=5]) as f32 / 100.0;
+                    hum = LittleEndian::read_i16(&data[6..=7]) as f32 / 100.0;
+                    batt = &data[8];
+                    have_reading = true;
+                } else if let Some(data) = manufacturer_data.get(&0xec88_u16) {
+                    let mut sign = 1.0;
+                    let mut data_x =
+                        ((data[1] as u32) << 16) + ((data[2] as u32) << 8) + (data[3] as u32);
+                    batt = &data[4];
 
+                    if (data_x & 0x800000) > 0 {
+                        sign = -1.0;
+                        data_x ^= 0x800000;
+                    }
+
+                    let temp_u = data_x / 1000;
+                    let hum_u = data_x % 1000;
+
+                    temp = sign * (temp_u as f32) / 10.0;
+                    hum = (hum_u as f32) / 10.0;
+                    have_reading = true;
+                } else {
+                    debug!(
+                        "ManufacturerDataAdvertisement: {:?}, {:02x?}",
+                        id, manufacturer_data
+                    );
+                }
+
+                if have_reading {
                     match sensors.get(&*mac) {
                         Some(sensor) => mqtt_publish_sensor(&cli, sensor, temp, hum, *batt),
                         None => warn!("Received temp for sensor {} not in config", mac),
                     }
-                } else {
-                    debug!(
-                        "ManufacturerDataAdvertisement: {:?}, {:?}",
-                        id, manufacturer_data
-                    );
                 }
             }
 
@@ -97,13 +120,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn mqtt_publish_sensor(
-    cli: &mqtt::client::Client,
+    cli: &Option<mqtt::client::Client>,
     sensor: &config::Sensor,
     temp: f32,
     hum: f32,
     batt: u8,
 ) {
-    let json_data = json!({"temperature": temp, "RH": hum, "battery": batt});
+    let json_data =
+        json!({"temperature": format!("{:.1}",temp), "RH": format!("{:.1}",hum), "battery": batt});
 
     let msg_charge = mqtt::MessageBuilder::new()
         .topic(&sensor.mqtt_publish)
@@ -112,13 +136,33 @@ fn mqtt_publish_sensor(
         .retained(true)
         .finalize();
 
-    if let Err(e) = cli.publish(msg_charge) {
-        error!("Error sending message: {:?}", e);
-        process::exit(1);
+    match cli {
+        Some(mqtt_client) => {
+            if let Err(e) = mqtt_client.publish(msg_charge) {
+                error!("Error sending message: {:?}", e);
+                // exit, as we are managed by systemd or something else, we should re-try the
+                // re-connection again on restart
+                process::exit(1);
+            }
+            info!(
+                "mqtt published {} -> {}",
+                sensor.mqtt_publish,
+                json_data.to_string()
+            );
+        }
+        None => info!(
+            "mqtt disabled, {} -> {}",
+            sensor.mqtt_publish,
+            json_data.to_string()
+        ),
     }
 }
 
-fn mqtt_connect(config: &config::Config) -> mqtt::client::Client {
+fn mqtt_connect(config: &config::Config) -> Option<mqtt::client::Client> {
+    if config.mqtt_config.disabled {
+        return None;
+    }
+
     let create_opts = mqtt::CreateOptionsBuilder::new()
         .server_uri(&config.mqtt_config.endpoint)
         .client_id(&config.mqtt_config.client_id)
@@ -139,5 +183,5 @@ fn mqtt_connect(config: &config::Config) -> mqtt::client::Client {
 
     info!("Connected to {}", config.mqtt_config.endpoint);
 
-    return cli;
+    return Some(cli);
 }

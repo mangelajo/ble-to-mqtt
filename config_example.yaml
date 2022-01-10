@@ -1,4 +1,5 @@
 mqtt_config:
+  disabled: true
   endpoint: tcp://my-server.com:1883
   client_id: my-client-id
   username: user
